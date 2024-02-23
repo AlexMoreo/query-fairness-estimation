@@ -143,8 +143,7 @@ LeQua2022
 MultiLabel
 NewMethods
 Ordinal
-Retrieval
-eDiscovery
+Archived/eDiscovery
 poster-cikm
 slides-cikm
 slides-short-cikm
@@ -152,10 +151,5 @@ quick_experiment
 svm_perf_quantification/svm_struct
 svm_perf_quantification/svm_light
 TweetSentQuant
-
-
-
-
-
 
 *.png
