@@ -169,8 +169,8 @@ for CLASS_NAME in ['first_letter_category']: #['continent']: #, 'gender', 'gende
             table_mae.add(benchmark=f'{scape_latex(CLASS_NAME)}@{k}', method=method_name, values=mae_errors[k])
             table_mrae.add(benchmark=f'{scape_latex(CLASS_NAME)}@{k}', method=method_name, values=mrae_errors[k])
 
-    table_mae.latexPDF('./latex', 'table_mae.tex')
-    table_mrae.latexPDF('./latex', 'table_mrae.tex')
+    table_mae.latexPDF('./latex', f'table_{CLASS_NAME}_mae.tex')
+    table_mrae.latexPDF('./latex', f'table_{CLASS_NAME}_mrae.tex')
 
 
 
