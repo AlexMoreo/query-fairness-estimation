@@ -63,7 +63,7 @@ class TextRankings:
         O = self.obj
         docs_ids = [doc_id for doc_id, query_id in O['qid'].items() if query_id == sample_id]
         texts = [O['text'][doc_id] for doc_id in docs_ids]
-        labels = [O['continent'][doc_id] for doc_id in docs_ids]
+        labels = [O[self.class_name][doc_id] for doc_id in docs_ids]
         if max_lines > 0 and len(texts) > max_lines:
             ranks = [int(O['rank'][doc_id]) for doc_id in docs_ids]
             sel = np.argsort(ranks)[:max_lines]
