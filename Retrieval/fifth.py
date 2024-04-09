@@ -104,10 +104,6 @@ RANK_AT_K = -1
 REDUCE_TR = 50000
 qp.environ['SAMPLE_SIZE'] = RANK_AT_K
 
-data_path = {
-    'first_letter_category': './first_letter_categoryDataset',
-    'continent': './newExperimentalSetup'
-}
 
 def scape_latex(string):
     return string.replace('_', '\_')
@@ -116,14 +112,19 @@ def scape_latex(string):
 Ks = [10, 50, 100, 250, 500, 1000, 2000]
 # Ks = [500]
 
-for CLASS_NAME in ['first_letter_category']: #['continent']: #, 'gender', 'gender_category', 'occupations', 'source_countries', 'source_subcont_regions', 'years_category', 'relative_pageviews_category']:
+for CLASS_NAME in ['continent'] : #'years_category']: #['continent', 'first_letter_category']: #, 'gender', 'gender_category', 'occupations', 'source_countries', 'source_subcont_regions', 'years_category', 'relative_pageviews_category']:
 
-    train_path = join(data_path[CLASS_NAME], 'train3000samples.json')
+    data_path = './' + CLASS_NAME
+
+    if CLASS_NAME in ['years_category', 'continent']:
+        train_path = join(data_path, 'train500PerGroup.json')
+    else:
+        train_path = join(data_path, 'train3000samples.json')
 
     tfidf, classifier_trained = qp.util.pickled_resource(f'classifier_{CLASS_NAME}.pkl', train_classifier)
     trained=True
 
-    experiment_prot = RetrievedSamples(data_path[CLASS_NAME],
+    experiment_prot = RetrievedSamples(data_path,
                                load_fn=load_json_sample,
                                vectorizer=tfidf,
                                max_train_lines=None,
