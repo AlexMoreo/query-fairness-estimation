@@ -45,6 +45,8 @@ def load_json_sample(path, class_name, max_lines=-1):
     obj = json.load(open(path, 'rt'))
     keys = [f'{id}' for id in range(len(obj['text'].keys()))]
     text = [obj['text'][id] for id in keys]
+    #print(list(obj.keys()))
+    #import sys; sys.exit(0)
     classes = [obj[class_name][id] for id in keys]
     if max_lines is not None and max_lines>0:
         text = text[:max_lines]

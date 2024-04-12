@@ -112,11 +112,11 @@ def scape_latex(string):
 Ks = [10, 50, 100, 250, 500, 1000, 2000]
 # Ks = [500]
 
-for CLASS_NAME in ['continent'] : #'years_category']: #['continent', 'first_letter_category']: #, 'gender', 'gender_category', 'occupations', 'source_countries', 'source_subcont_regions', 'years_category', 'relative_pageviews_category']:
+for CLASS_NAME in ['gender_category'] : #'years_category']: #['continent', 'first_letter_category']: #, 'gender', 'gender_category', 'occupations', 'source_countries', 'source_subcont_regions', 'years_category', 'relative_pageviews_category']:
 
     data_path = './' + CLASS_NAME
 
-    if CLASS_NAME in ['years_category', 'continent']:
+    if CLASS_NAME in ['years_category', 'continent', 'gender_category']:
         train_path = join(data_path, 'train500PerGroup.json')
     else:
         train_path = join(data_path, 'train3000samples.json')
