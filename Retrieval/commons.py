@@ -8,50 +8,28 @@ from quapy.protocol import AbstractProtocol
 import json
 
 
-def load_txt_sample(path, parse_columns, verbose=False, max_lines=None):
-    # print('reading', path)
-    if verbose:
-        print(f'loading {path}...', end='')
-    df = pd.read_csv(path, sep='\t')
-    if verbose:
-        print('[done]')
-    X = df['text'].values
-    y = df['continent'].values
+def load_sample(path, class_name, max_lines=-1):
+    """
+    Loads a sample json as a dataframe and returns text and labels for
+    the given class_name
 
-    if parse_columns:
-        rank = df['rank'].values
-        scores = df['score'].values
-        rank = rank[y != 'Antarctica']
-        scores = scores[y != 'Antarctica']
-
-    X = X[y!='Antarctica']
-    y = y[y!='Antarctica']
-
-    if parse_columns:
-        order = np.argsort(rank)
-        X = X[order]
-        y = y[order]
-        rank = rank[order]
-        scores = scores[order]
-
-    if max_lines is not None:
-        X = X[:max_lines]
-        y = y[:max_lines]
-
-    return X, y
-
-
-def load_json_sample(path, class_name, max_lines=-1):
-    obj = json.load(open(path, 'rt'))
-    keys = [f'{id}' for id in range(len(obj['text'].keys()))]
-    text = [obj['text'][id] for id in keys]
-    #print(list(obj.keys()))
-    #import sys; sys.exit(0)
-    classes = [obj[class_name][id] for id in keys]
+    :param path: path to a json file
+    :param class_name: string representing the target class
+    :param max_lines: if provided and > 0 then returns only the
+        first requested number of instances
+    :return: texts and labels for class_name
+    """
+    df = pd.read_json(path)
+    text = df.text.values
+    try:
+        labels = df[class_name].values
+    except KeyError as e:
+        print(f'error in {path}; key {class_name} not found')
+        raise e
     if max_lines is not None and max_lines>0:
         text = text[:max_lines]
-        classes = classes[:max_lines]
-    return text, classes
+        labels = labels[:max_lines]
+    return text, labels
 
 
 class TextRankings:
@@ -75,49 +53,81 @@ class TextRankings:
         return texts, labels
 
 
-def get_query_id_from_path(path, prefix='training', posfix='200SPLIT'):
-    qid = path
-    qid = qid[:qid.index(posfix)]
-    qid = qid[qid.index(prefix)+len(prefix):]
-    return qid
+def filter_by_classes(X, y, classes):
+    idx = np.isin(y, classes)
+    return X[idx], y[idx]
 
 
 class RetrievedSamples(AbstractProtocol):
 
-    def __init__(self, path_dir: str, load_fn, vectorizer, max_train_lines=None, max_test_lines=None, classes=None, class_name=None):
-        self.path_dir = path_dir
+    def __init__(self,
+                 class_home: str,
+                 test_rankings_path: str,
+                 load_fn,
+                 vectorizer,
+                 class_name,
+                 max_train_lines=None,
+                 max_test_lines=None,
+                 classes=None
+                 ):
+        self.class_home = class_home
+        self.test_rankings_df = pd.read_json(test_rankings_path)
         self.load_fn = load_fn
         self.vectorizer = vectorizer
+        self.class_name = class_name
         self.max_train_lines = max_train_lines
         self.max_test_lines = max_test_lines
         self.classes=classes
-        assert class_name is not None, 'class name should be specified'
-        self.class_name = class_name
-        self.text_samples = TextRankings(join(self.path_dir, 'testRankingsRetrieval.json'), class_name=class_name)
 
 
     def __call__(self):
 
-        for file in glob(join(self.path_dir, 'training*SPLIT.json')):
+        for file in self._list_queries():
 
-            X, y = self.load_fn(file, class_name=self.class_name, max_lines=self.max_train_lines)
-            X = self.vectorizer.transform(X)
+            texts, y = self.load_fn(file, class_name=self.class_name, max_lines=self.max_train_lines)
+            texts, y = filter_by_classes(texts, y, self.classes)
+            X = self.vectorizer.transform(texts)
             train_sample = LabelledCollection(X, y, classes=self.classes)
 
-            query_id = get_query_id_from_path(file)
-            X, y = self.text_samples.get_sample_Xy(query_id, max_lines=self.max_test_lines)
+            query_id = self._get_query_id_from_path(file)
+            texts, y = self._get_test_sample(query_id, max_lines=self.max_test_lines)
+            texts, y = filter_by_classes(texts, y, self.classes)
+            X = self.vectorizer.transform(texts)
 
-            # if len(X)!=qp.environ['SAMPLE_SIZE']:
-            #     print(f'[warning]: file {file} contains {len(X)} instances (expected: {qp.environ["SAMPLE_SIZE"]})')
-            # assert len(X) == qp.environ['SAMPLE_SIZE'], f'unexpected sample size for file {file}, found {len(X)}'
-            X = self.vectorizer.transform(X)
             try:
                 test_sample = LabelledCollection(X, y, classes=train_sample.classes_)
+                yield train_sample, test_sample
             except ValueError as e:
-                print(f'file {file} caused error {e}')
+                print(f'file {file} caused an exception: {e}')
                 yield None, None
 
-            # print('train #classes:', train_sample.n_classes, train_sample.prevalence())
-            # print('test  #classes:', test_sample.n_classes, test_sample.prevalence())
 
-            yield train_sample, test_sample
+    def _list_queries(self):
+        return sorted(glob(join(self.class_home, 'training_Query*200SPLIT.json')))
+
+    def _get_test_sample(self, query_id, max_lines=-1):
+        df = self.test_rankings_df
+        sel_df = df[df.qid==int(query_id)]
+        texts = sel_df.text.values
+        try:
+            labels = sel_df[self.class_name].values
+        except KeyError as e:
+            print(f'error: key {self.class_name} not found in test rankings')
+            raise e
+        if max_lines > 0 and len(texts) > max_lines:
+            ranks = sel_df.rank.values
+            idx = np.argsort(ranks)[:max_lines]
+            texts = np.asarray(texts)[idx]
+            labels = np.asarray(labels)[idx]
+        return texts, labels
+
+    def total(self):
+        return len(self._list_queries())
+
+    def _get_query_id_from_path(self, path):
+        prefix = 'training_Query-'
+        posfix = 'Sample-200SPLIT'
+        qid = path
+        qid = qid[:qid.index(posfix)]
+        qid = qid[qid.index(prefix) + len(prefix):]
+        return qid
