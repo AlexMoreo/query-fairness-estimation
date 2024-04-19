@@ -141,6 +141,19 @@ def uniform_prevalence_sampling(n_classes, size=1):
     return u
 
 
+def uniform_prevalence(n_classes):
+    """
+    Returns a vector representing the uniform distribution for `n_classes`
+
+    :param n_classes: number of classes
+    :return: np.ndarray with all values 1/n_classes
+    """
+    assert isinstance(n_classes, int) and n_classes>0, \
+        (f'param {n_classes} not understood; must be a positive integer representing the '
+         f'number of classes ')
+    return np.full(shape=n_classes, fill_value=1./n_classes)
+
+
 uniform_simplex_sampling = uniform_prevalence_sampling
 
 

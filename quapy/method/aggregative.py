@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Callable, Union
 import numpy as np
-from abstention.calibration import NoBiasVectorScaling, TempScaling, VectorScaling
+from abstention.calibration import NoBiasVectorScaling, TempScaling, VectorScaling, PlattScaling
 from scipy import optimize
 from sklearn.base import BaseEstimator
 from sklearn.calibration import CalibratedClassifierCV
@@ -636,20 +636,35 @@ class EMQ(AggregativeSoftQuantifier):
                 calibrator = TempScaling()
             elif self.recalib == 'vs':
                 calibrator = VectorScaling()
+            elif self.recalib == 'platt':
+                calibrator = CalibratedClassifierCV(estimator=self.classifier, cv='prefit')
             else:
                 raise ValueError('invalid param argument for recalibration method; available ones are '
                                  '"nbvs", "bcts", "ts", and "vs".')
 
             if not np.issubdtype(y.dtype, np.number):
                 y = np.searchsorted(data.classes_, y)
-            self.calibration_function = calibrator(P, np.eye(data.n_classes)[y], posterior_supplied=True)
+
+            if self.recalib == 'platt':
+                self.classifier = calibrator.fit(*data.Xy)
+            else:
+                print(classif_predictions.prevalence())
+                try:
+                    self.calibration_function = calibrator(P, np.eye(data.n_classes)[y], posterior_supplied=True)
+                except RuntimeError as e:
+                    print(e)
+                    print('defaults to I')
+                    self.calibration_function = lambda P:P
 
         if self.exact_train_prev:
             self.train_prevalence = data.prevalence()
         else:
             train_posteriors = classif_predictions.X
             if self.recalib is not None:
-                train_posteriors = self.calibration_function(train_posteriors)
+                if self.recalib == 'platt':
+                    train_posteriors = self.classifier.predict_proba(train_posteriors)
+                else:
+                    train_posteriors = self.calibration_function(train_posteriors)
             self.train_prevalence = F.prevalence_from_probabilities(train_posteriors)
 
     def aggregate(self, classif_posteriors, epsilon=EPSILON):
