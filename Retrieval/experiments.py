@@ -51,9 +51,9 @@ To evaluate our approach, I have executed the queries on the test split. You can
 def methods(classifier, class_name):
 
     kde_param = {
-        'continent': 0.18,
-        'gender': 0.12,
-        'years_category':0.09
+        'continent': 0.01,
+        'gender': 0.005,
+        'years_category':0.03
     }
 
     yield ('Naive', Naive())
@@ -76,13 +76,14 @@ def methods(classifier, class_name):
     # yield ('KDE03', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.03))
     # yield ('KDE-silver', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth='silverman'))
     # yield ('KDE-scott', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth='scott'))
-    yield ('KDE-opt', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=kde_param[class_name]))
+    yield ('KDEy-ML', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=kde_param[class_name]))
+    # yield ('KDE005', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.005))
     yield ('KDE01', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
-    yield ('KDE02', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.02))
-    yield ('KDE03', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.03))
-    yield ('KDE04', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.04))
-    yield ('KDE05', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.05))
-    yield ('KDE07', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.07))
+    # yield ('KDE02', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.02))
+    # yield ('KDE03', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.03))
+    # yield ('KDE04', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.04))
+    # yield ('KDE05', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.05))
+    # yield ('KDE07', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.07))
     # yield ('KDE10', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.10))
 
 
@@ -176,63 +177,64 @@ def run_experiment():
     return results
 
 
-data_home = 'data'
-
-HALF=True
-exp_posfix = '_half'
-
-method_names = [name for name, *other in methods(None, 'continent')]
-
 Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
 
-for class_name in ['gender', 'continent', 'years_category']: # 'relative_pageviews_category', 'num_sitelinks_category']:
-    tables_mae, tables_mrae = [], []
+if __name__ == '__main__':
+    data_home = 'data'
 
-    benchmarks = [benchmark_name(class_name, k) for k in Ks]
+    HALF=True
+    exp_posfix = '_half'
 
-    for data_size in ['10K', '50K', '100K', '500K', '1M', 'FULL']:
+    method_names = [name for name, *other in methods(None, 'continent')]
 
-        table_mae = Table(name=f'{class_name}-{data_size}-mae', benchmarks=benchmarks, methods=method_names)
-        table_mrae = Table(name=f'{class_name}-{data_size}-mrae', benchmarks=benchmarks, methods=method_names)
-        table_mae.format.mean_prec = 5
-        table_mae.format.remove_zero = True
-        table_mae.format.color_mode = 'global'
+    for class_name in ['gender', 'continent', 'years_category']: # 'relative_pageviews_category', 'num_sitelinks_category']:
+        tables_mae, tables_mrae = [], []
 
-        tables_mae.append(table_mae)
-        tables_mrae.append(table_mrae)
+        benchmarks = [benchmark_name(class_name, k) for k in Ks]
 
-        class_home = join(data_home, class_name, data_size)
-        # train_data_path = join(class_home, 'classifier_training.json')
-        # classifier_path = join('classifiers', data_size, f'classifier_{class_name}.pkl')
-        train_data_path = join(data_home, class_name, 'FULL', 'classifier_training.json')  # <-------- fixed classifier
-        classifier_path = join('classifiers', 'FULL', f'classifier_{class_name}.pkl')  # <------------ fixed classifier
-        test_rankings_path = join(data_home, 'testRanking_Results.json')
-        results_home = join('results'+exp_posfix, class_name, data_size)
+        for data_size in ['10K', '50K', '100K', '500K', '1M', 'FULL']:
 
-        tfidf, classifier_trained = qp.util.pickled_resource(classifier_path, train_classifier, train_data_path)
+            table_mae = Table(name=f'{class_name}-{data_size}-mae', benchmarks=benchmarks, methods=method_names)
+            table_mrae = Table(name=f'{class_name}-{data_size}-mrae', benchmarks=benchmarks, methods=method_names)
+            table_mae.format.mean_prec = 5
+            table_mae.format.remove_zero = True
+            table_mae.format.color_mode = 'global'
 
-        experiment_prot = RetrievedSamples(
-            class_home,
-            test_rankings_path,
-            vectorizer=tfidf,
-            class_name=class_name,
-            classes=classifier_trained.classes_
-        )
-        for method_name, quantifier in methods(classifier_trained, class_name):
+            tables_mae.append(table_mae)
+            tables_mrae.append(table_mrae)
 
-            results_path = join(results_home, method_name + '.pkl')
-            if os.path.exists(results_path):
-                print(f'Method {method_name=} already computed')
-                results = pickle.load(open(results_path, 'rb'))
-            else:
-                results = run_experiment()
+            class_home = join(data_home, class_name, data_size)
+            # train_data_path = join(class_home, 'classifier_training.json')
+            # classifier_path = join('classifiers', data_size, f'classifier_{class_name}.pkl')
+            train_data_path = join(data_home, class_name, 'FULL', 'classifier_training.json')  # <-------- fixed classifier
+            classifier_path = join('classifiers', 'FULL', f'classifier_{class_name}.pkl')  # <------------ fixed classifier
+            test_rankings_path = join(data_home, 'testRanking_Results.json')
+            results_home = join('results'+exp_posfix, class_name, data_size)
 
-                os.makedirs(Path(results_path).parent, exist_ok=True)
-                pickle.dump(results, open(results_path, 'wb'), pickle.HIGHEST_PROTOCOL)
+            tfidf, classifier_trained = qp.util.pickled_resource(classifier_path, train_classifier, train_data_path)
 
-            for k in Ks:
-                table_mae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mae'][k])
-                table_mrae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mrae'][k])
+            experiment_prot = RetrievedSamples(
+                class_home,
+                test_rankings_path,
+                vectorizer=tfidf,
+                class_name=class_name,
+                classes=classifier_trained.classes_
+            )
+            for method_name, quantifier in methods(classifier_trained, class_name):
+
+                results_path = join(results_home, method_name + '.pkl')
+                if os.path.exists(results_path):
+                    print(f'Method {method_name=} already computed')
+                    results = pickle.load(open(results_path, 'rb'))
+                else:
+                    results = run_experiment()
+
+                    os.makedirs(Path(results_path).parent, exist_ok=True)
+                    pickle.dump(results, open(results_path, 'wb'), pickle.HIGHEST_PROTOCOL)
+
+                for k in Ks:
+                    table_mae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mae'][k])
+                    table_mrae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mrae'][k])
 
         # Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=tables_mae+tables_mrae)
         Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=tables_mrae)

@@ -67,7 +67,7 @@ class KDEBase:
             selX = X[y==cat]
             if selX.size==0:
                 selX = [F.uniform_prevalence(len(classes))]
-            class_cond_X.append(selX)
+            class_cond_X.append(np.asarray(selX))
         return [self.get_kde_function(X_cond_yi, bandwidth) for X_cond_yi in class_cond_X]
 
 

@@ -64,16 +64,21 @@ class RetrievedSamples:
 
         for file in self._list_queries():
 
+            # print(file)
+
             # loads the training sample
             train_df = pd.read_json(file)
-            Xtr, ytr, score_tr = get_text_label_score(train_df, class_name, vectorizer, filter_classes=self.classes)
+            if len(train_df) == 0:
+                print('empty dataframe: ', file)
+            else:
+                Xtr, ytr, score_tr = get_text_label_score(train_df, class_name, vectorizer, filter_classes=self.classes)
 
-            # loads the test sample
-            query_id = self._get_query_id_from_path(file)
-            sel_df = tests_df[tests_df.qid == int(query_id)]
-            Xte, yte, score_te = get_text_label_score(sel_df, class_name, vectorizer, filter_classes=self.classes)
+                # loads the test sample
+                query_id = self._get_query_id_from_path(file)
+                sel_df = tests_df[tests_df.qid == int(query_id)]
+                Xte, yte, score_te = get_text_label_score(sel_df, class_name, vectorizer, filter_classes=self.classes)
 
-            yield (Xtr, ytr, score_tr), (Xte, yte, score_te)
+                yield (Xtr, ytr, score_tr), (Xte, yte, score_te)
 
     def _list_queries(self):
         return sorted(glob(join(self.class_home, 'training_Query*200SPLIT.json')))
