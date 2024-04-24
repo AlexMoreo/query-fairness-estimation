@@ -62,6 +62,7 @@ def methods(classifier, class_name):
     # yield ('PCC', PCC(classifier))
     # yield ('ACC', ACC(classifier, val_split=5, n_jobs=-1))
     yield ('PACC', PACC(classifier, val_split=5, n_jobs=-1))
+    yield ('PACC-s', PACC(classifier, val_split=5, n_jobs=-1))
     # yield ('EMQ', EMQ(classifier, exact_train_prev=True))
     # yield ('EMQ-Platt', EMQ(classifier, exact_train_prev=True, recalib='platt'))
     # yield ('EMQh', EMQ(classifier, exact_train_prev=False))
@@ -79,6 +80,7 @@ def methods(classifier, class_name):
     yield ('KDEy-ML', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=kde_param[class_name]))
     # yield ('KDE005', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.005))
     yield ('KDE01', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
+    yield ('KDE01-s', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
     # yield ('KDE02', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.02))
     # yield ('KDE03', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.03))
     # yield ('KDE04', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.04))
@@ -146,13 +148,15 @@ def run_experiment():
         Xtr, ytr, score_tr = train
         Xte, yte, score_te = test
 
-        if HALF:
+        if HALF and not method_name.endswith('-s'):
             n = len(ytr) // 2
             train_col = LabelledCollection(Xtr[:n], ytr[:n], classes=classifier_trained.classes_)
         else:
             train_col = LabelledCollection(Xtr, ytr, classes=classifier_trained.classes_)
 
-        if method_name not in ['Naive', 'NaiveQuery']:
+        idx, max_score_round_robin = get_idx_score_matrix_per_class(train_col, score_tr)
+
+        if method_name not in ['Naive', 'NaiveQuery'] and not method_name.endswith('-s'):
             quantifier.fit(train_col, val_split=train_col, fit_classifier=False)
         elif method_name == 'Naive':
             quantifier.fit(train_col)
@@ -163,6 +167,11 @@ def run_experiment():
             if method_name == 'NaiveQuery':
                 train_k = reduceAtK(train_col, k)
                 quantifier.fit(train_k)
+            elif method_name.endswith('-s'):
+                test_min_score = score_te[k] if k < len(score_te) else score_te[-1]
+                train_k = reduce_train_at_score(train_col, idx, max_score_round_robin, test_min_score)
+                print(f'{k=}, {test_min_score=} {len(train_k)=}')
+                quantifier.fit(train_k, val_split=train_k, fit_classifier=False)
 
             estim_prev = quantifier.quantify(test_k.instances)
 
@@ -175,6 +184,33 @@ def run_experiment():
         pbar.set_description(f'{method_name}')
 
     return results
+
+
+def get_idx_score_matrix_per_class(train, score_tr):
+    classes = train.classes_
+    num_classes = len(classes)
+    num_docs = len(train)
+    scores = np.zeros(shape=(num_docs, num_classes), dtype=float)
+    idx = np.full(shape=(num_docs, num_classes), fill_value=-1, dtype=int)
+    X, y = train.Xy
+    for i, class_i in enumerate(classes):
+        class_i_scores = score_tr[y == class_i]
+        rank_i = np.argwhere(y == class_i).flatten()
+        scores[:len(class_i_scores), i] = class_i_scores
+        idx[:len(class_i_scores), i] = rank_i
+    max_score_round_robin = scores.max(axis=1)
+    return idx, max_score_round_robin
+
+
+def reduce_train_at_score(train, idx, max_score_round_robin, score_te_at_k, min_docs_per_class=5):
+    min_index = np.min(np.argwhere(max_score_round_robin<score_te_at_k).flatten())
+    min_index = max(min_docs_per_class, min_index)
+    choosen_idx = idx[:min_index,:].flatten()
+    choosen_idx = choosen_idx[choosen_idx!=-1]
+
+    choosen_data = LabelledCollection(train.X[choosen_idx], train.y[choosen_idx], classes=train.classes_)
+    return choosen_data
+
 
 
 Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
@@ -236,8 +272,8 @@ if __name__ == '__main__':
                     table_mae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mae'][k])
                     table_mrae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mrae'][k])
 
-        # Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=tables_mae+tables_mrae)
-        Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=tables_mrae)
+
+            Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=tables_mrae)
 
 
 
