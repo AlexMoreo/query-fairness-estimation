@@ -8,8 +8,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn.svm import LinearSVC
+from scipy.special import rel_entr as KLD
 
 import quapy as qp
+import quapy.functional as F
 from Retrieval.commons import RetrievedSamples, load_sample
 from method.non_aggregative import MaximumLikelihoodPrevalenceEstimation as Naive
 from quapy.method.aggregative import ClassifyAndCount, EMQ, ACC, PCC, PACC, KDEyML
@@ -56,12 +58,12 @@ def methods(classifier, class_name):
         'years_category':0.03
     }
 
-    yield ('Naive', Naive())
-    yield ('NaiveQuery', Naive())
+    #yield ('Naive', Naive())
+    #yield ('NaiveQuery', Naive())
     yield ('CC', ClassifyAndCount(classifier))
     # yield ('PCC', PCC(classifier))
     # yield ('ACC', ACC(classifier, val_split=5, n_jobs=-1))
-    yield ('PACC2', PACC(classifier, val_split=5, n_jobs=-1))
+    #yield ('PACC', PACC(classifier, val_split=5, n_jobs=-1))
     # yield ('PACC-s', PACC(classifier, val_split=5, n_jobs=-1))
     # yield ('EMQ', EMQ(classifier, exact_train_prev=True))
     # yield ('EMQ-Platt', EMQ(classifier, exact_train_prev=True, recalib='platt'))
@@ -77,9 +79,9 @@ def methods(classifier, class_name):
     # yield ('KDE03', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.03))
     # yield ('KDE-silver', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth='silverman'))
     # yield ('KDE-scott', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth='scott'))
-    yield ('KDEy-ML', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=kde_param[class_name]))
+    # yield ('KDEy-ML', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=kde_param[class_name]))
     # yield ('KDE005', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.005))
-    yield ('KDE01', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
+    # yield ('KDE01', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
     # yield ('KDE01-s', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
     # yield ('KDE02', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.02))
     # yield ('KDE03', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.03))
@@ -140,7 +142,10 @@ def benchmark_name(class_name, k):
 def run_experiment():
     results = {
         'mae': {k: [] for k in Ks},
-        'mrae': {k: [] for k in Ks}
+        'mrae': {k: [] for k in Ks},
+        'Dkl_estim': [],
+        'Dkl_true': [],
+        'Dkl_error': []
     }
 
     pbar = tqdm(experiment_prot(), total=experiment_prot.total())
@@ -154,6 +159,9 @@ def run_experiment():
         else:
             train_col = LabelledCollection(Xtr, ytr, classes=classifier_trained.classes_)
 
+        class_order = train_col.classes_
+        q_rel_prevs = np.asarray([q_rel_prevs.get(k, 0.) for k in class_order])
+
         # idx, max_score_round_robin = get_idx_score_matrix_per_class(train_col, score_tr)
 
         if method_name not in ['Naive', 'NaiveQuery'] and not method_name.endswith('-s'):
@@ -162,6 +170,8 @@ def run_experiment():
             quantifier.fit(train_col)
 
         test_col = LabelledCollection(Xte, yte, classes=classifier_trained.classes_)
+        Dkl_estim = []
+        Dkl_true  = []
         for k in Ks:
             test_k = reduceAtK(test_col, k)
             if method_name == 'NaiveQuery':
@@ -175,11 +185,26 @@ def run_experiment():
 
             estim_prev = quantifier.quantify(test_k.instances)
 
+            eps=(1. / (2 * k))
             mae = qp.error.mae(test_k.prevalence(), estim_prev)
-            mrae = qp.error.mrae(test_k.prevalence(), estim_prev, eps=(1. / (2 * k)))
+            mrae = qp.error.mrae(test_k.prevalence(), estim_prev, eps=eps)
+            Dkl_at_k_estim = qp.error.kld(estim_prev, q_rel_prevs, eps=eps)
+            Dkl_at_k_true  = qp.error.kld(test_k.prevalence(), q_rel_prevs, eps=eps)
 
             results['mae'][k].append(mae)
             results['mrae'][k].append(mrae)
+            Dkl_estim.append(Dkl_at_k_estim)
+            Dkl_true.append(Dkl_at_k_true)
+        
+        Z = 1
+        Dkl_estim = (1/Z) * sum((1./np.log2(k)) * v for v in Dkl_estim)
+        Dkl_true  = (1/Z) * sum((1./np.log2(k)) * v for v in Dkl_true)
+        Dkl_error = np.abs(Dkl_true-Dkl_estim)
+        #print(f'{Dkl_estim=}\t{Dkl_true=}\t{Dkl_error=}')
+
+        results['Dkl_estim'].append(Dkl_estim)
+        results['Dkl_true'].append(Dkl_true)
+        results['Dkl_error'].append(Dkl_error)
 
         pbar.set_description(f'{method_name}')
 
@@ -214,6 +239,8 @@ def reduce_train_at_score(train, idx, max_score_round_robin, score_te_at_k, min_
 
 
 Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
+CLASS_NAMES = ['gender', 'continent', 'years_category']  # 'relative_pageviews_category', 'num_sitelinks_category']:
+DATA_SIZES = ['10K', '50K', '100K', '500K', '1M', 'FULL']
 
 if __name__ == '__main__':
     data_home = 'data'
@@ -222,13 +249,15 @@ if __name__ == '__main__':
     exp_posfix = '_half'
 
     method_names = [name for name, *other in methods(None, 'continent')]
-
-    for class_name in ['gender', 'continent', 'years_category']: # 'relative_pageviews_category', 'num_sitelinks_category']:
+    
+    for class_name in CLASS_NAMES:
         tables_mae, tables_mrae = [], []
+
+        table_DKL = Table(name=f'Dkl-{class_name}', benchmarks=[benchmark_name(class_name, s) for s in DATA_SIZES], methods=method_names)
 
         benchmarks = [benchmark_name(class_name, k) for k in Ks]
 
-        for data_size in ['10K', '50K', '100K', '500K', '1M', 'FULL']:
+        for data_size in DATA_SIZES:
 
             table_mae = Table(name=f'{class_name}-{data_size}-mae', benchmarks=benchmarks, methods=method_names)
             table_mrae = Table(name=f'{class_name}-{data_size}-mrae', benchmarks=benchmarks, methods=method_names)
@@ -261,21 +290,26 @@ if __name__ == '__main__':
             for method_name, quantifier in methods(classifier_trained, class_name):
 
                 results_path = join(results_home, method_name + '.pkl')
+                # if the result pickle exists, loads and returns it
                 if os.path.exists(results_path):
                     print(f'Method {method_name=} already computed')
                     results = pickle.load(open(results_path, 'rb'))
+                # otherwie, computes the results, dumps a pickle, and returns it
                 else:
                     results = run_experiment()
-
                     os.makedirs(Path(results_path).parent, exist_ok=True)
                     pickle.dump(results, open(results_path, 'wb'), pickle.HIGHEST_PROTOCOL)
 
+                print(results_path)
+                print(results)
+
+                # compose the tables
                 for k in Ks:
                     table_mae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mae'][k])
                     table_mrae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mrae'][k])
+                table_DKL.add(benchmark=benchmark_name(class_name, data_size), method=method_name, v=results['Dkl_error'])
 
-
-        Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=tables_mrae)
+        Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=[table_DKL] + tables_mrae)
 
 
 
