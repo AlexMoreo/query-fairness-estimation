@@ -46,12 +46,14 @@ class RetrievedSamples:
     def __init__(self,
                  class_home: str,
                  test_rankings_path: str,
+                 test_query_prevs_path: str,
                  vectorizer,
                  class_name,
                  classes=None
                  ):
         self.class_home = class_home
         self.test_rankings_df = pd.read_json(test_rankings_path)
+        self.test_query_prevs_df = pd.read_json(test_query_prevs_path)
         self.vectorizer = vectorizer
         self.class_name = class_name
         self.classes=classes
@@ -75,10 +77,14 @@ class RetrievedSamples:
 
                 # loads the test sample
                 query_id = self._get_query_id_from_path(file)
-                sel_df = tests_df[tests_df.qid == int(query_id)]
+                sel_df = tests_df[tests_df.qid == query_id]
                 Xte, yte, score_te = get_text_label_score(sel_df, class_name, vectorizer, filter_classes=self.classes)
 
-                yield (Xtr, ytr, score_tr), (Xte, yte, score_te)
+                # gets the prevalence of all judged relevant documents for the query
+                df = self.test_query_prevs_df
+                q_rel_prevs = df.loc[df.id == query_id][class_name+'_proportions'].values[0]
+
+                yield (Xtr, ytr, score_tr), (Xte, yte, score_te), q_rel_prevs
 
     def _list_queries(self):
         return sorted(glob(join(self.class_home, 'training_Query*200SPLIT.json')))
@@ -109,6 +115,7 @@ class RetrievedSamples:
         qid = path
         qid = qid[:qid.index(posfix)]
         qid = qid[qid.index(prefix) + len(prefix):]
+        qid = int(qid)
         return qid
 
 

@@ -61,8 +61,8 @@ def methods(classifier, class_name):
     yield ('CC', ClassifyAndCount(classifier))
     # yield ('PCC', PCC(classifier))
     # yield ('ACC', ACC(classifier, val_split=5, n_jobs=-1))
-    yield ('PACC', PACC(classifier, val_split=5, n_jobs=-1))
-    yield ('PACC-s', PACC(classifier, val_split=5, n_jobs=-1))
+    yield ('PACC2', PACC(classifier, val_split=5, n_jobs=-1))
+    # yield ('PACC-s', PACC(classifier, val_split=5, n_jobs=-1))
     # yield ('EMQ', EMQ(classifier, exact_train_prev=True))
     # yield ('EMQ-Platt', EMQ(classifier, exact_train_prev=True, recalib='platt'))
     # yield ('EMQh', EMQ(classifier, exact_train_prev=False))
@@ -80,7 +80,7 @@ def methods(classifier, class_name):
     yield ('KDEy-ML', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=kde_param[class_name]))
     # yield ('KDE005', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.005))
     yield ('KDE01', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
-    yield ('KDE01-s', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
+    # yield ('KDE01-s', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
     # yield ('KDE02', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.02))
     # yield ('KDE03', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.03))
     # yield ('KDE04', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.04))
@@ -144,7 +144,7 @@ def run_experiment():
     }
 
     pbar = tqdm(experiment_prot(), total=experiment_prot.total())
-    for train, test in pbar:
+    for train, test, q_rel_prevs in pbar:
         Xtr, ytr, score_tr = train
         Xte, yte, score_te = test
 
@@ -154,7 +154,7 @@ def run_experiment():
         else:
             train_col = LabelledCollection(Xtr, ytr, classes=classifier_trained.classes_)
 
-        idx, max_score_round_robin = get_idx_score_matrix_per_class(train_col, score_tr)
+        # idx, max_score_round_robin = get_idx_score_matrix_per_class(train_col, score_tr)
 
         if method_name not in ['Naive', 'NaiveQuery'] and not method_name.endswith('-s'):
             quantifier.fit(train_col, val_split=train_col, fit_classifier=False)
@@ -167,11 +167,11 @@ def run_experiment():
             if method_name == 'NaiveQuery':
                 train_k = reduceAtK(train_col, k)
                 quantifier.fit(train_k)
-            elif method_name.endswith('-s'):
-                test_min_score = score_te[k] if k < len(score_te) else score_te[-1]
-                train_k = reduce_train_at_score(train_col, idx, max_score_round_robin, test_min_score)
-                print(f'{k=}, {test_min_score=} {len(train_k)=}')
-                quantifier.fit(train_k, val_split=train_k, fit_classifier=False)
+            # elif method_name.endswith('-s'):
+            #     test_min_score = score_te[k] if k < len(score_te) else score_te[-1]
+            #     train_k = reduce_train_at_score(train_col, idx, max_score_round_robin, test_min_score)
+            #     print(f'{k=}, {test_min_score=} {len(train_k)=}')
+            #     quantifier.fit(train_k, val_split=train_k, fit_classifier=False)
 
             estim_prev = quantifier.quantify(test_k.instances)
 
@@ -245,6 +245,7 @@ if __name__ == '__main__':
             train_data_path = join(data_home, class_name, 'FULL', 'classifier_training.json')  # <-------- fixed classifier
             classifier_path = join('classifiers', 'FULL', f'classifier_{class_name}.pkl')  # <------------ fixed classifier
             test_rankings_path = join(data_home, 'testRanking_Results.json')
+            test_query_prevs_path = join(data_home, 'prevelance_vectors_judged_docs.json')
             results_home = join('results'+exp_posfix, class_name, data_size)
 
             tfidf, classifier_trained = qp.util.pickled_resource(classifier_path, train_classifier, train_data_path)
@@ -252,6 +253,7 @@ if __name__ == '__main__':
             experiment_prot = RetrievedSamples(
                 class_home,
                 test_rankings_path,
+                test_query_prevs_path,
                 vectorizer=tfidf,
                 class_name=class_name,
                 classes=classifier_trained.classes_
@@ -273,7 +275,7 @@ if __name__ == '__main__':
                     table_mrae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mrae'][k])
 
 
-            Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=tables_mrae)
+        Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=tables_mrae)
 
 
 
