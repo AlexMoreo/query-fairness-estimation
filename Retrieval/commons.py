@@ -3,9 +3,7 @@ import numpy as np
 from glob import glob
 from os.path import join
 
-from quapy.data import LabelledCollection
-from quapy.protocol import AbstractProtocol
-import json
+import quapy.functional as F
 
 
 def load_sample(path, class_name):
@@ -23,66 +21,85 @@ def load_sample(path, class_name):
     return text, labels
 
 
-def get_text_label_score(df, class_name, vectorizer=None, filter_classes=None):
-    text = df.text.values
-    labels = df[class_name].values
-    rel_score = df.score.values
-
-    if filter_classes is not None:
-        idx = np.isin(labels, filter_classes)
-        text = text[idx]
-        labels = labels[idx]
-        rel_score = rel_score[idx]
-
-    if vectorizer is not None:
-        text = vectorizer.transform(text)
-
-    order = np.argsort(-rel_score)
-    return text[order], labels[order], rel_score[order]
+def binarize_labels(labels, positive_class=None):
+    if positive_class is not None:
+        protected_labels = labels==positive_class
+        labels[protected_labels] = 1
+        labels[~protected_labels] = 0
+        labels = labels.astype(int)
+    return labels
 
 
 class RetrievedSamples:
-
     def __init__(self,
                  class_home: str,
                  test_rankings_path: str,
                  test_query_prevs_path: str,
                  vectorizer,
                  class_name,
-                 classes=None
+                 positive_class=None,
+                 classes=None,
                  ):
         self.class_home = class_home
         self.test_rankings_df = pd.read_json(test_rankings_path)
         self.test_query_prevs_df = pd.read_json(test_query_prevs_path)
         self.vectorizer = vectorizer
         self.class_name = class_name
-        self.classes=classes
+        self.positive_class = positive_class
+        self.classes = classes
 
+    def get_text_label_score(self, df):
+        class_name = self.class_name
+        vectorizer = self.vectorizer
+        filter_classes = self.classes
+
+        text = df.text.values
+        labels = df[class_name].values
+        rel_score = df.score.values
+
+        labels = binarize_labels(labels, self.positive_class)
+
+        if filter_classes is not None:
+            idx = np.isin(labels, filter_classes)
+            text = text[idx]
+            labels = labels[idx]
+            rel_score = rel_score[idx]
+
+        if vectorizer is not None:
+            text = vectorizer.transform(text)
+
+        order = np.argsort(-rel_score)
+        return text[order], labels[order], rel_score[order]
 
     def __call__(self):
         tests_df = self.test_rankings_df
         class_name = self.class_name
-        vectorizer = self.vectorizer
 
         for file in self._list_queries():
-
-            # print(file)
 
             # loads the training sample
             train_df = pd.read_json(file)
             if len(train_df) == 0:
                 print('empty dataframe: ', file)
             else:
-                Xtr, ytr, score_tr = get_text_label_score(train_df, class_name, vectorizer, filter_classes=self.classes)
+                Xtr, ytr, score_tr = self.get_text_label_score(train_df)
 
                 # loads the test sample
                 query_id = self._get_query_id_from_path(file)
                 sel_df = tests_df[tests_df.qid == query_id]
-                Xte, yte, score_te = get_text_label_score(sel_df, class_name, vectorizer, filter_classes=self.classes)
+                Xte, yte, score_te = self.get_text_label_score(sel_df)
 
                 # gets the prevalence of all judged relevant documents for the query
                 df = self.test_query_prevs_df
                 q_rel_prevs = df.loc[df.id == query_id][class_name+'_proportions'].values[0]
+
+                if self.positive_class is not None:
+                    if self.positive_class not in q_rel_prevs:
+                        print(f'positive class {self.positive_class} not found in the query; skipping')
+                        continue
+                    q_rel_prevs = F.as_binary_prevalence(q_rel_prevs[self.positive_class])
+                else:
+                    q_rel_prevs = np.asarray([q_rel_prevs.get(class_i, 0.) for class_i in self.classes])
 
                 yield (Xtr, ytr, score_tr), (Xte, yte, score_te), q_rel_prevs
 

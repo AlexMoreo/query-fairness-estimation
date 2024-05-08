@@ -6,16 +6,20 @@ from pathlib import Path
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import GridSearchCV, cross_val_predict
+from sklearn.base import clone
 from sklearn.svm import LinearSVC
 from scipy.special import rel_entr as KLD
 
 import quapy as qp
 import quapy.functional as F
-from Retrieval.commons import RetrievedSamples, load_sample
+from Retrieval.commons import RetrievedSamples, load_sample, binarize_labels
+from Retrieval.methods import M3rND_ModelB, M3rND_ModelD, AbstractM3rND
 from method.non_aggregative import MaximumLikelihoodPrevalenceEstimation as Naive
 from quapy.method.aggregative import ClassifyAndCount, EMQ, ACC, PCC, PACC, KDEyML
 from quapy.data.base import LabelledCollection
+from scipy.sparse import vstack
 
 from os.path import join
 from tqdm import tqdm
@@ -50,21 +54,20 @@ To evaluate our approach, I have executed the queries on the test split. You can
 """
 
 
-def methods(classifier, class_name):
+def methods(classifier, class_name, binarize=False):
 
     kde_param = {
         'continent': 0.01,
-        'gender': 0.005,
+        'gender': 0.03,
         'years_category':0.03
     }
 
-    #yield ('Naive', Naive())
-    #yield ('NaiveQuery', Naive())
+    yield ('Naive', Naive())
+    yield ('NaiveQuery', Naive())
     yield ('CC', ClassifyAndCount(classifier))
     # yield ('PCC', PCC(classifier))
     # yield ('ACC', ACC(classifier, val_split=5, n_jobs=-1))
-    #yield ('PACC', PACC(classifier, val_split=5, n_jobs=-1))
-    # yield ('PACC-s', PACC(classifier, val_split=5, n_jobs=-1))
+    yield ('PACC', PACC(classifier, val_split=5, n_jobs=-1))
     # yield ('EMQ', EMQ(classifier, exact_train_prev=True))
     # yield ('EMQ-Platt', EMQ(classifier, exact_train_prev=True, recalib='platt'))
     # yield ('EMQh', EMQ(classifier, exact_train_prev=False))
@@ -72,26 +75,16 @@ def methods(classifier, class_name):
     # yield ('EMQ-TS', EMQ(classifier, exact_train_prev=False, recalib='ts'))
     # yield ('EMQ-NBVS', EMQ(classifier, exact_train_prev=False, recalib='nbvs'))
     # yield ('EMQ-VS', EMQ(classifier, exact_train_prev=False, recalib='vs'))
-    # yield ('KDE001', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.001))
-    # yield ('KDE005', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.005)) # <-- wow!
+    yield ('KDEy-ML', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=kde_param[class_name]))
     # yield ('KDE01', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
-    # yield ('KDE02', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.02))
-    # yield ('KDE03', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.03))
-    # yield ('KDE-silver', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth='silverman'))
-    # yield ('KDE-scott', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth='scott'))
-    # yield ('KDEy-ML', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=kde_param[class_name]))
-    # yield ('KDE005', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.005))
-    # yield ('KDE01', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
-    # yield ('KDE01-s', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
-    # yield ('KDE02', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.02))
-    # yield ('KDE03', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.03))
-    # yield ('KDE04', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.04))
-    # yield ('KDE05', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.05))
-    # yield ('KDE07', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.07))
-    # yield ('KDE10', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.10))
+    if binarize:
+        yield ('M3b', M3rND_ModelB(classifier))
+        yield ('M3b+', M3rND_ModelB(classifier))
+        yield ('M3d', M3rND_ModelD(classifier))
+        yield ('M3d+', M3rND_ModelD(classifier))
 
 
-def train_classifier(train_path):
+def train_classifier_fn(train_path):
     """
     Trains a classifier. To do so, it loads the training set, transforms it into a tfidf representation.
     The classifier is Logistic Regression, with hyperparameters C (range [0.001, 0.01, ..., 1000]) and
@@ -101,28 +94,36 @@ def train_classifier(train_path):
     """
     texts, labels = load_sample(train_path, class_name=class_name)
 
+    if BINARIZE:
+        labels = binarize_labels(labels, positive_class=protected_group[class_name])
+
     tfidf = TfidfVectorizer(sublinear_tf=True, min_df=3)
     Xtr = tfidf.fit_transform(texts)
     print(f'Xtr shape={Xtr.shape}')
 
     print('training classifier...', end='')
     classifier = LogisticRegression(max_iter=5000)
-    classifier = GridSearchCV(
+    modsel = GridSearchCV(
         classifier,
         param_grid={'C': np.logspace(-4, 4, 9), 'class_weight': ['balanced', None]},
         n_jobs=-1,
         cv=5
     )
-    classifier.fit(Xtr, labels)
-    classifier = classifier.best_estimator_
-    classifier_acc = classifier.best_score_
-    print(f'[done] best-params={classifier.best_params_} got {classifier_acc:.4f} score')
+    modsel.fit(Xtr, labels)
+    classifier = modsel.best_estimator_
+    classifier_acc = modsel.best_score_
+    best_params = modsel.best_params_
+    print(f'[done] best-params={best_params} got {classifier_acc:.4f} score')
+
+    print('generating cross-val predictions for M3')
+    predictions = cross_val_predict(clone(classifier), Xtr, labels, cv=10, n_jobs=-1, verbose=10)
+    conf_matrix = confusion_matrix(labels, predictions, labels=classifier.classes_)
 
     training = LabelledCollection(Xtr, labels)
     print('training classes:', training.classes_)
     print('training prevalence:', training.prevalence())
 
-    return tfidf, classifier
+    return tfidf, classifier, conf_matrix
 
 
 def reduceAtK(data: LabelledCollection, k):
@@ -140,12 +141,12 @@ def benchmark_name(class_name, k):
 
 
 def run_experiment():
+
     results = {
         'mae': {k: [] for k in Ks},
         'mrae': {k: [] for k in Ks},
-        'Dkl_estim': [],
-        'Dkl_true': [],
-        'Dkl_error': []
+        'rKL_error': [],
+        'rND_error': []
     }
 
     pbar = tqdm(experiment_prot(), total=experiment_prot.total())
@@ -153,163 +154,159 @@ def run_experiment():
         Xtr, ytr, score_tr = train
         Xte, yte, score_te = test
 
-        if HALF and not method_name.endswith('-s'):
-            n = len(ytr) // 2
-            train_col = LabelledCollection(Xtr[:n], ytr[:n], classes=classifier_trained.classes_)
-        else:
-            train_col = LabelledCollection(Xtr, ytr, classes=classifier_trained.classes_)
+        n = len(ytr) // 2
+        train_col = LabelledCollection(Xtr[:n], ytr[:n], classes=classifier.classes_)
 
-        class_order = train_col.classes_
-        q_rel_prevs = np.asarray([q_rel_prevs.get(k, 0.) for k in class_order])
-
-        # idx, max_score_round_robin = get_idx_score_matrix_per_class(train_col, score_tr)
-
-        if method_name not in ['Naive', 'NaiveQuery'] and not method_name.endswith('-s'):
-            quantifier.fit(train_col, val_split=train_col, fit_classifier=False)
+        if method_name not in ['Naive', 'NaiveQuery', 'M3b', 'M3b+', 'M3d', 'M3d+']:
+            method.fit(train_col, val_split=train_col, fit_classifier=False)
         elif method_name == 'Naive':
-            quantifier.fit(train_col)
+            method.fit(train_col)
 
-        test_col = LabelledCollection(Xte, yte, classes=classifier_trained.classes_)
-        Dkl_estim = []
-        Dkl_true  = []
+        test_col = LabelledCollection(Xte, yte, classes=classifier.classes_)
+        rKL_estim, rKL_true = [], []
+        rND_estim, rND_true = [], []
         for k in Ks:
             test_k = reduceAtK(test_col, k)
             if method_name == 'NaiveQuery':
                 train_k = reduceAtK(train_col, k)
-                quantifier.fit(train_k)
-            # elif method_name.endswith('-s'):
-            #     test_min_score = score_te[k] if k < len(score_te) else score_te[-1]
-            #     train_k = reduce_train_at_score(train_col, idx, max_score_round_robin, test_min_score)
-            #     print(f'{k=}, {test_min_score=} {len(train_k)=}')
-            #     quantifier.fit(train_k, val_split=train_k, fit_classifier=False)
+                method.fit(train_k)
 
-            estim_prev = quantifier.quantify(test_k.instances)
+            estim_prev = method.quantify(test_k.instances)
 
-            eps=(1. / (2 * k))
-            mae = qp.error.mae(test_k.prevalence(), estim_prev)
-            mrae = qp.error.mrae(test_k.prevalence(), estim_prev, eps=eps)
-            Dkl_at_k_estim = qp.error.kld(estim_prev, q_rel_prevs, eps=eps)
-            Dkl_at_k_true  = qp.error.kld(test_k.prevalence(), q_rel_prevs, eps=eps)
+            # epsilon value for prevalence smoothing
+            eps=(1. / (2. * k))
 
+            # error metrics
+            test_k_prev = test_k.prevalence()
+            mae = qp.error.mae(test_k_prev, estim_prev)
+            mrae = qp.error.mrae(test_k_prev, estim_prev, eps=eps)
+            rKL_at_k_estim = qp.error.kld(estim_prev, q_rel_prevs, eps=eps)
+            rKL_at_k_true  = qp.error.kld(test_k_prev, q_rel_prevs, eps=eps)
+
+            if BINARIZE:
+                # [1] is the index of the minority or historically disadvantaged group
+                rND_at_k_estim = np.abs(estim_prev[1] - q_rel_prevs[1])
+                rND_at_k_true = np.abs(test_k_prev[1] - q_rel_prevs[1])
+
+            # collect results
             results['mae'][k].append(mae)
             results['mrae'][k].append(mrae)
-            Dkl_estim.append(Dkl_at_k_estim)
-            Dkl_true.append(Dkl_at_k_true)
-        
-        Z = 1
-        Dkl_estim = (1/Z) * sum((1./np.log2(k)) * v for v in Dkl_estim)
-        Dkl_true  = (1/Z) * sum((1./np.log2(k)) * v for v in Dkl_true)
-        Dkl_error = np.abs(Dkl_true-Dkl_estim)
-        #print(f'{Dkl_estim=}\t{Dkl_true=}\t{Dkl_error=}')
+            rKL_estim.append(rKL_at_k_estim)
+            rKL_true.append(rKL_at_k_true)
+            if BINARIZE:
+                rND_estim.append(rND_at_k_estim)
+                rND_true.append(rND_at_k_true)
 
-        results['Dkl_estim'].append(Dkl_estim)
-        results['Dkl_true'].append(Dkl_true)
-        results['Dkl_error'].append(Dkl_error)
+
+        # aggregate fairness metrics
+        def aggregate(rMs, Ks, Z=1):
+            return (1 / Z) * sum((1. / np.log2(k)) * v for v, k in zip(rMs, Ks))
+
+        Z = sum((1. / np.log2(k)) for k in Ks)
+        rKL_estim = aggregate(rKL_estim, Ks, Z)
+        rKL_true  = aggregate(rKL_true, Ks, Z)
+        rKL_error = np.abs(rKL_true-rKL_estim)
+        results['rKL_error'].append(rKL_error)
+
+        if BINARIZE:
+            rND_estim = aggregate(rND_estim, Ks, Z)
+            rND_true = aggregate(rND_true, Ks, Z)
+
+            if isinstance(method, AbstractM3rND):
+                if method_name.endswith('+'):
+                    conf_matrix_ = method.get_confusion_matrix(*train_col.Xy)
+                else:
+                    conf_matrix_ = conf_matrix.copy()
+                rND_estim = method.fair_measure_correction(rND_estim, conf_matrix_)
+
+            rND_error = np.abs(rND_true - rND_estim)
+            results['rND_error'].append(rND_error)
 
         pbar.set_description(f'{method_name}')
 
     return results
 
 
-def get_idx_score_matrix_per_class(train, score_tr):
-    classes = train.classes_
-    num_classes = len(classes)
-    num_docs = len(train)
-    scores = np.zeros(shape=(num_docs, num_classes), dtype=float)
-    idx = np.full(shape=(num_docs, num_classes), fill_value=-1, dtype=int)
-    X, y = train.Xy
-    for i, class_i in enumerate(classes):
-        class_i_scores = score_tr[y == class_i]
-        rank_i = np.argwhere(y == class_i).flatten()
-        scores[:len(class_i_scores), i] = class_i_scores
-        idx[:len(class_i_scores), i] = rank_i
-    max_score_round_robin = scores.max(axis=1)
-    return idx, max_score_round_robin
 
-
-def reduce_train_at_score(train, idx, max_score_round_robin, score_te_at_k, min_docs_per_class=5):
-    min_index = np.min(np.argwhere(max_score_round_robin<score_te_at_k).flatten())
-    min_index = max(min_docs_per_class, min_index)
-    choosen_idx = idx[:min_index,:].flatten()
-    choosen_idx = choosen_idx[choosen_idx!=-1]
-
-    choosen_data = LabelledCollection(train.X[choosen_idx], train.y[choosen_idx], classes=train.classes_)
-    return choosen_data
-
-
-
-Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
-CLASS_NAMES = ['gender', 'continent', 'years_category']  # 'relative_pageviews_category', 'num_sitelinks_category']:
+# Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
+Ks = [50, 100, 500, 1000]
+CLASS_NAMES = ['years_category', 'continent', 'gender'] # ['relative_pageviews_category', 'num_sitelinks_category']:
 DATA_SIZES = ['10K', '50K', '100K', '500K', '1M', 'FULL']
+data_home = 'data'
+protected_group = {
+    'gender': 'Female',
+    'continent': 'Africa',
+    'years_category': 'Pre-1900s',
+}
 
 if __name__ == '__main__':
-    data_home = 'data'
 
-    HALF=True
-    exp_posfix = '_half'
-
-    method_names = [name for name, *other in methods(None, 'continent')]
+    tables_RND, tables_DKL = [], []
+    for class_mode in ['binary', 'multiclass']:
+        BINARIZE = (class_mode=='binary')
+        method_names = [name for name, *other in methods(None, 'continent', BINARIZE)]
     
-    for class_name in CLASS_NAMES:
-        tables_mae, tables_mrae = [], []
+        for class_name in CLASS_NAMES:
+            tables_mae, tables_mrae = [], []
 
-        table_DKL = Table(name=f'Dkl-{class_name}', benchmarks=[benchmark_name(class_name, s) for s in DATA_SIZES], methods=method_names)
+            benchmarks_size =[benchmark_name(class_name, s) for s in DATA_SIZES]
+            table_DKL = Table(name=f'rKL-{class_name}', benchmarks=benchmarks_size, methods=method_names)
+            table_RND = Table(name=f'rND-{class_name}', benchmarks=benchmarks_size, methods=method_names)
 
-        benchmarks = [benchmark_name(class_name, k) for k in Ks]
+            for data_size in DATA_SIZES:
+                print(class_name, class_mode, data_size)
+                benchmarks_k = [benchmark_name(class_name, k) for k in Ks]
+                # table_mae = Table(name=f'{class_name}-{data_size}-mae', benchmarks=benchmarks_k, methods=method_names)
+                table_mrae = Table(name=f'{class_name}-{data_size}-mrae', benchmarks=benchmarks_k, methods=method_names)
 
-        for data_size in DATA_SIZES:
+                # tables_mae.append(table_mae)
+                tables_mrae.append(table_mrae)
 
-            table_mae = Table(name=f'{class_name}-{data_size}-mae', benchmarks=benchmarks, methods=method_names)
-            table_mrae = Table(name=f'{class_name}-{data_size}-mrae', benchmarks=benchmarks, methods=method_names)
-            table_mae.format.mean_prec = 5
-            table_mae.format.remove_zero = True
-            table_mae.format.color_mode = 'global'
+                # sets all paths
+                class_home = join(data_home, class_name, data_size)
+                train_data_path = join(data_home, class_name, 'FULL', 'classifier_training.json') # <----- fixed classifier
+                classifier_path = join('classifiers', 'FULL', f'classifier_{class_name}_{class_mode}.pkl')
+                test_rankings_path = join(data_home, 'testRanking_Results.json')
+                test_query_prevs_path = join(data_home, 'prevelance_vectors_judged_docs.json')
+                results_home = join('results', class_name, class_mode, data_size)
+                positive_class = protected_group[class_name] if BINARIZE else None
 
-            tables_mae.append(table_mae)
-            tables_mrae.append(table_mrae)
+                # instantiates the classifier (trains it the first time, loads it in the subsequent executions)
+                tfidf, classifier, conf_matrix \
+                    = qp.util.pickled_resource(classifier_path, train_classifier_fn, train_data_path)
 
-            class_home = join(data_home, class_name, data_size)
-            # train_data_path = join(class_home, 'classifier_training.json')
-            # classifier_path = join('classifiers', data_size, f'classifier_{class_name}.pkl')
-            train_data_path = join(data_home, class_name, 'FULL', 'classifier_training.json')  # <-------- fixed classifier
-            classifier_path = join('classifiers', 'FULL', f'classifier_{class_name}.pkl')  # <------------ fixed classifier
-            test_rankings_path = join(data_home, 'testRanking_Results.json')
-            test_query_prevs_path = join(data_home, 'prevelance_vectors_judged_docs.json')
-            results_home = join('results'+exp_posfix, class_name, data_size)
+                experiment_prot = RetrievedSamples(
+                    class_home,
+                    test_rankings_path,
+                    test_query_prevs_path,
+                    vectorizer=tfidf,
+                    class_name=class_name,
+                    positive_class=positive_class,
+                    classes=classifier.classes_
+                )
 
-            tfidf, classifier_trained = qp.util.pickled_resource(classifier_path, train_classifier, train_data_path)
+                for method_name, method in methods(classifier, class_name, BINARIZE):
 
-            experiment_prot = RetrievedSamples(
-                class_home,
-                test_rankings_path,
-                test_query_prevs_path,
-                vectorizer=tfidf,
-                class_name=class_name,
-                classes=classifier_trained.classes_
-            )
-            for method_name, quantifier in methods(classifier_trained, class_name):
+                    results_path = join(results_home, method_name + '.pkl')
+                    results = qp.util.pickled_resource(results_path, run_experiment)
 
-                results_path = join(results_home, method_name + '.pkl')
-                # if the result pickle exists, loads and returns it
-                if os.path.exists(results_path):
-                    print(f'Method {method_name=} already computed')
-                    results = pickle.load(open(results_path, 'rb'))
-                # otherwie, computes the results, dumps a pickle, and returns it
-                else:
-                    results = run_experiment()
-                    os.makedirs(Path(results_path).parent, exist_ok=True)
-                    pickle.dump(results, open(results_path, 'wb'), pickle.HIGHEST_PROTOCOL)
+                    # compose the tables
+                    for k in Ks:
+                        # table_mae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mae'][k])
+                        table_mrae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mrae'][k])
+                    table_DKL.add(benchmark=benchmark_name(class_name, data_size), method=method_name, v=results['rKL_error'])
+                    if BINARIZE:
+                        table_RND.add(benchmark=benchmark_name(class_name, data_size), method=method_name, v=results['rND_error'])
 
-                print(results_path)
-                print(results)
+            tables = ([table_RND] + tables_mrae) if BINARIZE else ([table_DKL] + tables_mrae)
+            Table.LatexPDF(f'./latex/{class_mode}/{class_name}.pdf', tables=tables)
 
-                # compose the tables
-                for k in Ks:
-                    table_mae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mae'][k])
-                    table_mrae.add(benchmark=benchmark_name(class_name, k), method=method_name, v=results['mrae'][k])
-                table_DKL.add(benchmark=benchmark_name(class_name, data_size), method=method_name, v=results['Dkl_error'])
+            if BINARIZE:
+                tables_RND.append(table_RND)
+            else:
+                tables_DKL.append(table_DKL)
 
-        Table.LatexPDF(f'./latex{exp_posfix}/{class_name}{exp_posfix}.pdf', tables=[table_DKL] + tables_mrae)
+    Table.LatexPDF(f'./latex/global/main.pdf', tables=tables_RND+tables_DKL, dedicated_pages=False)
 
 
 
