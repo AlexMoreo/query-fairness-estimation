@@ -28,9 +28,10 @@ import matplotlib.pyplot as plt
 data_home = 'data'
 class_mode = 'multiclass'
 
-method_names = [name for name, *other in methods(None, 'continent')]
+method_names = [name for name, *other in methods(None)]
 
-Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
+# Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
+Ks = [50, 100, 500, 1000]
 DATA_SIZE = ['10K', '50K', '100K', '500K', '1M', 'FULL']
 CLASS_NAME = ['gender', 'continent', 'years_category']
 all_results = {}
@@ -46,6 +47,8 @@ results = load_all_results()
 for class_name in CLASS_NAME:
     for k in Ks:
 
+        log = True
+
         fig, ax = plt.subplots()
 
         max_means = []
@@ -60,15 +63,18 @@ for class_name in CLASS_NAME:
             # max_mean = np.max([
             #         results[class_name][data_size][method_name][k]['max'] for data_size in DATA_SIZE
             # ])
+
             max_means.append(max(means))
 
             style = 'o-' if method_name != 'CC' else '--'
             line = ax.plot(DATA_SIZE, means, style, label=method_name, color=None)
             color = line[-1].get_color()
+            if log:
+                ax.set_yscale('log')
             # ax.fill_between(Ks, means - stds, means + stds, alpha=0.3, color=color)
 
         ax.set_xlabel('training pool size')
-        ax.set_ylabel('RAE')
+        ax.set_ylabel('RAE' + ('(log scale)' if log else ''))
         ax.set_title(f'{class_name} from {k=}')
         ax.set_ylim([0, max(max_means)*1.05])
 

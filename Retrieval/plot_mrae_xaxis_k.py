@@ -78,6 +78,8 @@ results = load_all_results()
 for class_name in CLASS_NAME:
     for data_size in DATA_SIZE:
 
+        log = True
+
         fig, ax = plt.subplots()
 
         max_means = []
@@ -99,10 +101,12 @@ for class_name in CLASS_NAME:
 
             line = ax.plot(Ks, means, 'o-', label=method_name, color=None)
             color = line[-1].get_color()
+            if log:
+                ax.set_yscale('log')
             # ax.fill_between(Ks, means - stds, means + stds, alpha=0.3, color=color)
 
         ax.set_xlabel('k')
-        ax.set_ylabel('RAE')
+        ax.set_ylabel('RAE' + ('(log scale)' if log else ''))
         ax.set_title(f'{class_name} from {data_size}')
         ax.set_ylim([0, max(max_means)*1.05])
 
