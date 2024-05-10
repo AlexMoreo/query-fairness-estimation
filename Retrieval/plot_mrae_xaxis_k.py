@@ -1,25 +1,9 @@
 import os.path
 import pickle
-from collections import defaultdict
-from pathlib import Path
-
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV
-from sklearn.svm import LinearSVC
-
-import quapy as qp
-from Retrieval.commons import RetrievedSamples, load_sample
-from Retrieval.experiments import methods, benchmark_name
-from method.non_aggregative import MaximumLikelihoodPrevalenceEstimation as Naive
-from quapy.method.aggregative import ClassifyAndCount, EMQ, ACC, PCC, PACC, KDEyML
-from quapy.data.base import LabelledCollection
-
+from Retrieval.experiments import methods
+from Retrieval.commons import CLASS_NAMES, Ks, DATA_SIZES
 from os.path import join
-from tqdm import tqdm
-
-from result_table.src.table import Table
 import matplotlib.pyplot as plt
 
 
@@ -29,10 +13,6 @@ class_mode = 'multiclass'
 
 method_names = [name for name, *other in methods(None, 'continent')]
 
-# Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
-Ks = [50, 100, 500, 1000]
-DATA_SIZE = ['10K', '50K', '100K', '500K', '1M', 'FULL']
-CLASS_NAME = ['gender', 'continent', 'years_category']
 all_results = {}
 
 
@@ -40,11 +20,11 @@ all_results = {}
 # class_name -> data_size -> method_name -> k -> stat -> float
 # where stat is "mean", "std", "max"
 def load_all_results():
-    for class_name in CLASS_NAME:
+    for class_name in CLASS_NAMES:
 
         all_results[class_name] = {}
 
-        for data_size in DATA_SIZE:
+        for data_size in DATA_SIZES:
 
             all_results[class_name][data_size] = {}
 
@@ -75,8 +55,8 @@ results = load_all_results()
 # generates the class-independent, size-independent plots for y-axis=MRAE in which:
 # - the x-axis displays the Ks
 
-for class_name in CLASS_NAME:
-    for data_size in DATA_SIZE:
+for class_name in CLASS_NAMES:
+    for data_size in DATA_SIZES:
 
         log = True
 

@@ -1,25 +1,14 @@
-import os.path
-import pickle
-from collections import defaultdict
-from pathlib import Path
-
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import GridSearchCV, cross_val_predict
 from sklearn.base import clone
-from sklearn.svm import LinearSVC
-from scipy.special import rel_entr as KLD
 
 import quapy as qp
-import quapy.functional as F
-from Retrieval.commons import RetrievedSamples, load_sample, binarize_labels
-from Retrieval.methods import M3rND_ModelB, M3rND_ModelD, AbstractM3rND
+from Retrieval.commons import *
+from Retrieval.methods import *
 from method.non_aggregative import MaximumLikelihoodPrevalenceEstimation as Naive
 from quapy.method.aggregative import ClassifyAndCount, EMQ, ACC, PCC, PACC, KDEyML
 from quapy.data.base import LabelledCollection
-from scipy.sparse import vstack
 
 from os.path import join
 from tqdm import tqdm
@@ -62,7 +51,8 @@ def methods(classifier, class_name=None, binarize=False):
         'years_category':0.03
     }
 
-    yield ('Naive', Naive())
+    # yield ('Naive', Naive())
+    # yield ('NaiveHalf', Naive())
     yield ('NaiveQuery', Naive())
     yield ('CC', ClassifyAndCount(classifier))
     # yield ('PCC', PCC(classifier))
@@ -159,9 +149,13 @@ def run_experiment():
 
         train_col = LabelledCollection(Xtr, ytr, classes=classifier.classes_)
 
-        if method_name not in ['Naive', 'NaiveQuery', 'M3b', 'M3b+', 'M3d', 'M3d+']:
+        if not method_name.startswith('Naive') and not method_name.startswith('M3'):
             method.fit(train_col, val_split=train_col, fit_classifier=False)
         elif method_name == 'Naive':
+            method.fit(train_col)
+        elif method_name == 'NaiveHalf':
+            n = len(ytr)//2
+            train_col = LabelledCollection(Xtr[:n], ytr[:n], classes=classifier.classes_)
             method.fit(train_col)
 
         test_col = LabelledCollection(Xte, yte, classes=classifier.classes_)
@@ -231,17 +225,7 @@ def run_experiment():
     return results
 
 
-
-# Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
-Ks = [50, 100, 500, 1000]
-CLASS_NAMES = ['years_category', 'continent', 'gender'] # ['relative_pageviews_category', 'num_sitelinks_category']:
-DATA_SIZES = ['10K', '50K', '100K', '500K', '1M', 'FULL']
 data_home = 'data'
-protected_group = {
-    'gender': 'Female',
-    'continent': 'Africa',
-    'years_category': 'Pre-1900s',
-}
 
 if __name__ == '__main__':
 
@@ -249,7 +233,7 @@ if __name__ == '__main__':
     # the corresponding rND (for binary) or rKL (for multiclass) score
     tables_RND, tables_DKL = [], []
     tables_final = []
-    for class_mode in ['binary', 'multiclass']:
+    for class_mode in ['multiclass', 'binary']:
         BINARIZE = (class_mode=='binary')
         method_names = [name for name, *other in methods(None, binarize=BINARIZE)]
 

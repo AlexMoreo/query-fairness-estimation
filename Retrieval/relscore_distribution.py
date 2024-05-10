@@ -1,29 +1,9 @@
 import os.path
 import pickle
-from collections import defaultdict
 from itertools import zip_longest
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV
-from sklearn.svm import LinearSVC
-
-import quapy as qp
-import quapy.functional as F
-from Retrieval.commons import RetrievedSamples, load_sample
-from method.non_aggregative import MaximumLikelihoodPrevalenceEstimation as Naive
-from quapy.method.aggregative import ClassifyAndCount, EMQ, ACC, PCC, PACC, KDEyML
-from quapy.protocol import AbstractProtocol
-from quapy.data.base import LabelledCollection
-
-from glob import glob
+from Retrieval.commons import RetrievedSamples, load_sample, DATA_SIZES
 from os.path import join
 from tqdm import tqdm
-
-from result_table.src.table import Table
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -35,12 +15,11 @@ Plots the distribution of (predicted) relevance score for the test samples and f
 
 
 data_home = 'data'
-Ks = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000]
 
 for class_name in ['num_sitelinks_category', 'relative_pageviews_category', 'years_category', 'continent', 'gender']:
     test_added = False
     Mtrs, Mtes, source = [], [], []
-    for data_size in ['10K', '50K', '100K', '500K', '1M', 'FULL']:
+    for data_size in DATA_SIZES:
 
         class_home = join(data_home, class_name, data_size)
         classifier_path = join('classifiers', 'FULL', f'classifier_{class_name}.pkl')

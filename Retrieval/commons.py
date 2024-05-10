@@ -6,6 +6,19 @@ from os.path import join
 import quapy.functional as F
 
 
+Ks = [50, 100, 500, 1000]
+
+CLASS_NAMES = ['continent', 'gender', 'years_category'] # ['relative_pageviews_category', 'num_sitelinks_category']:
+
+DATA_SIZES = ['10K', '50K', '100K', '500K', '1M', 'FULL']
+
+protected_group = {
+    'gender': 'Female',
+    'continent': 'Africa',
+    'years_category': 'Pre-1900s',
+}
+
+
 def load_sample(path, class_name):
     """
     Loads a sample json as a dataframe and returns text and labels for
@@ -48,7 +61,9 @@ class RetrievedSamples:
         self.positive_class = positive_class
         self.classes = classes
 
-    def get_text_label_score(self, df):
+    def get_text_label_score(self, df, filter_rank=1000):
+        df = df[df['rank']<filter_rank]
+
         class_name = self.class_name
         vectorizer = self.vectorizer
         filter_classes = self.classes
