@@ -30,7 +30,6 @@ data_home = 'data'
 datasets = ['continent', 'gender', 'years_category', 'relative_pageviews_category', 'num_sitelinks_category']
 
 param_grid = {'C': np.logspace(-4, 4, 9), 'class_weight': ['balanced', None]}
-# param_grid = {'C': np.logspace(-1, 1, 2)}
 
 classifiers = [
     ('LR', LogisticRegression(max_iter=5000), param_grid),
@@ -44,6 +43,9 @@ table = Table(name=f'accuracy', benchmarks=[benchmark_name(d) for d in datasets]
 table.format.show_std = False
 table.format.stat_test = None
 table.format.lower_is_better = False
+table.format.color = False
+table.format.remove_zero = True
+table.format.style = 'rules'
 
 for class_name, (cls_name, cls, grid) in itertools.product(datasets, classifiers):
 
