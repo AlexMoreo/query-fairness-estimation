@@ -1,3 +1,4 @@
+import itertools
 import os.path
 import pickle
 import numpy as np
@@ -15,11 +16,18 @@ method_names = [name for name, *other in methods(None, 'continent')]
 
 all_results = {}
 
+class_name_label = {
+    'continent': 'Geographic Location',
+    'gender': 'Gender',
+    'years_category': 'Age of Topic'
+}
+
 
 # loads all MRAE results, and returns a dictionary containing the values, which is indexed by:
 # class_name -> data_size -> method_name -> k -> stat -> float
 # where stat is "mean", "std", "max"
 def load_all_results():
+
     for class_name in CLASS_NAMES:
 
         all_results[class_name] = {}
@@ -56,13 +64,14 @@ results = load_all_results()
 # - the x-axis displays the Ks
 
 for class_name in CLASS_NAMES:
-    for data_size in DATA_SIZES:
+    for data_size in DATA_SIZES[:1]:
 
-        log = True
+        log = class_name=='gender'
 
         fig, ax = plt.subplots()
 
         max_means = []
+        markers = itertools.cycle(['o', 's', '^', 'D', 'v', '*', '+'])
         for method_name in method_names:
             # class_name -> data_size -> method_name -> k -> stat -> float
             means = [
@@ -79,18 +88,23 @@ for class_name in CLASS_NAMES:
             means = np.asarray(means)
             stds = np.asarray(stds)
 
-            line = ax.plot(Ks, means, 'o-', label=method_name, color=None)
+            method_name = method_name.replace('NaiveQuery', 'Naive@$k$')
+            marker = next(markers)
+            line = ax.plot(Ks, means, 'o-', label=method_name, color=None, linewidth=3, markersize=10, marker=marker)
             color = line[-1].get_color()
             if log:
                 ax.set_yscale('log')
             # ax.fill_between(Ks, means - stds, means + stds, alpha=0.3, color=color)
 
+        ax.grid(True, which='both', axis='y', color='gray', linestyle='--', linewidth=0.3)
         ax.set_xlabel('k')
-        ax.set_ylabel('RAE' + ('(log scale)' if log else ''))
-        ax.set_title(f'{class_name} from {data_size}')
+        ax.set_ylabel('RAE' + (' (log scale)' if log else ''))
+        data_size_label = '$\mathcal{L}_{10\mathrm{K}}$'
+        ax.set_title(f'{class_name_label[class_name]} from {data_size_label}')
         ax.set_ylim([0, max(max_means)*1.05])
 
-        ax.legend()
+        if class_name == 'years_category':
+            ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         os.makedirs(f'plots/var_k/{class_name}', exist_ok=True)
         plotpath = f'plots/var_k/{class_name}/{data_size}_mrae.pdf'

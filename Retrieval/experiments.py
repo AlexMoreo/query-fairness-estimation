@@ -51,22 +51,10 @@ def methods(classifier, class_name=None, binarize=False):
         'years_category':0.03
     }
 
-    # yield ('Naive', Naive())
-    # yield ('NaiveHalf', Naive())
     yield ('NaiveQuery', Naive())
     yield ('CC', ClassifyAndCount(classifier))
-    # yield ('PCC', PCC(classifier))
-    # yield ('ACC', ACC(classifier, val_split=5, n_jobs=-1))
     yield ('PACC', PACC(classifier, val_split=5, n_jobs=-1))
-    # yield ('EMQ', EMQ(classifier, exact_train_prev=True))
-    # yield ('EMQ-Platt', EMQ(classifier, exact_train_prev=True, recalib='platt'))
-    # yield ('EMQh', EMQ(classifier, exact_train_prev=False))
-    # yield ('EMQ-BCTS', EMQ(classifier, exact_train_prev=True, recalib='bcts'))
-    # yield ('EMQ-TS', EMQ(classifier, exact_train_prev=False, recalib='ts'))
-    # yield ('EMQ-NBVS', EMQ(classifier, exact_train_prev=False, recalib='nbvs'))
-    # yield ('EMQ-VS', EMQ(classifier, exact_train_prev=False, recalib='vs'))
     yield ('KDEy-ML', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=kde_param.get(class_name, 0.01)))
-    # yield ('KDE01', KDEyML(classifier, val_split=5, n_jobs=-1, bandwidth=0.01))
     if binarize:
         yield ('M3b', M3rND_ModelB(classifier))
         yield ('M3b+', M3rND_ModelB(classifier))
@@ -152,10 +140,6 @@ def run_experiment():
         if not method_name.startswith('Naive') and not method_name.startswith('M3'):
             method.fit(train_col, val_split=train_col, fit_classifier=False)
         elif method_name == 'Naive':
-            method.fit(train_col)
-        elif method_name == 'NaiveHalf':
-            n = len(ytr)//2
-            train_col = LabelledCollection(Xtr[:n], ytr[:n], classes=classifier.classes_)
             method.fit(train_col)
 
         test_col = LabelledCollection(Xte, yte, classes=classifier.classes_)
