@@ -89,6 +89,7 @@ for class_name in CLASS_NAMES:
             stds = np.asarray(stds)
 
             method_name = method_name.replace('NaiveQuery', 'Naive@$k$')
+            method_name = method_name.replace('KDEy-ML', 'KDEy')
             marker = next(markers)
             line = ax.plot(Ks, means, 'o-', label=method_name, color=None, linewidth=3, markersize=10, marker=marker)
             color = line[-1].get_color()

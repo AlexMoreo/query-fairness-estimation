@@ -54,6 +54,7 @@ for class_name in CLASS_NAMES:
 
             style = 'o-' if method_name != 'CC' else '--'
             method_name = method_name.replace('NaiveQuery', 'Naive@$k$')
+            method_name = method_name.replace('KDEy-ML', 'KDEy')
             marker=next(markers)
             line = ax.plot(X_DATA_SIZES, means, style, label=method_name, color=None, linewidth=3, markersize=10, marker=marker)
             color = line[-1].get_color()
