@@ -87,7 +87,6 @@ def evaluation_report(model: BaseQuantifier,
     Generates a report (a pandas' DataFrame) containing information of the evaluation of the model as according
     to a specific protocol and in terms of one or more evaluation metrics (errors).
 
-
     :param model: a quantifier, instance of :class:`quapy.method.base.BaseQuantifier`
     :param protocol: :class:`quapy.protocol.AbstractProtocol`; if this object is also instance of
         :class:`quapy.protocol.OnLabelledCollectionProtocol`, then the aggregation speed-up can be run. This is the protocol

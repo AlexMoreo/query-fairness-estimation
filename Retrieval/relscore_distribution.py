@@ -1,7 +1,7 @@
 import os.path
 import pickle
 from itertools import zip_longest
-from Retrieval.commons import RetrievedSamples, load_sample, DATA_SIZES
+from commons import RetrievedSamples, load_sample, DATA_SIZES
 from os.path import join
 from tqdm import tqdm
 import numpy as np
@@ -57,9 +57,9 @@ for class_name in ['continent']: # 'num_sitelinks_category', 'relative_pageviews
 
     fig, ax = plt.subplots()
     # train_source = ['train-'+s for s in source]
-    train_source = ['$\mathcal{L}_{'+s.replace('FULL', '3.25M').replace('K','\mathrm{K}').replace('M','\mathrm{M}')+'}$' for s in source]
+    train_source = ['$L_{'+s.replace('FULL', '3.25M').replace('K','\mathrm{K}').replace('M','\mathrm{M}')+'}$' for s in source]
     # Ms = list(zip(Mtrs, train_source))+list(zip(Mtes, ['test']))
-    Ms = list(zip(Mtrs, train_source)) + list(zip(Mtes, ['$\mathcal{U}_{(3.25\mathrm{M})}$']))
+    Ms = list(zip(Mtrs, train_source)) + list(zip(Mtes, ['$U_{(3.25\mathrm{M})}$']))
 
 
     for M, source in Ms:
@@ -85,7 +85,7 @@ for class_name in ['continent']: # 'num_sitelinks_category', 'relative_pageviews
 
     # plt.show()
     os.makedirs('plots', exist_ok=True)
-    plotpath = f'plots/{class_name}_rel_distrbution.pdf'
+    plotpath = f'plots/{class_name}_rel_distrbution_2.pdf'
     print(f'saving plot in {plotpath}')
     plt.savefig(plotpath, bbox_inches='tight')
 
