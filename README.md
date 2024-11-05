@@ -1,3 +1,8 @@
+# Query Fairness Estimation
+
+This repo is a clone of QuaPy (the open source framework for quantification) with additional functionality for reproducing our experiments on Query Fairness Estimation (QFE).
+The related code is in the folder "Retrieval". The paper is currently under submission. 
+
 # QuaPy
 
 QuaPy is an open source framework for quantification (a.k.a. supervised prevalence estimation, or learning to quantify)
